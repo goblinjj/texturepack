@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Preprocessor } from "./components/Preprocessor";
 import "./App.css";
 
 type Tab = "preprocess" | "atlas";
@@ -24,7 +25,7 @@ function App() {
       </nav>
       <main className="content">
         {activeTab === "preprocess" ? (
-          <div>预处理模块</div>
+          <Preprocessor />
         ) : (
           <div>Atlas 模块</div>
         )}

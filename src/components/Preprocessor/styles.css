@@ -1,0 +1,75 @@
+.preprocessor {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.toolbar {
+  padding: 12px;
+  background: #16213e;
+  border-bottom: 1px solid #0f3460;
+  display: flex;
+  gap: 8px;
+}
+
+.toolbar button {
+  padding: 8px 16px;
+  background: #e94560;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.toolbar button:hover {
+  background: #ff6b6b;
+}
+
+.workspace {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.canvas-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    linear-gradient(45deg, #222 25%, transparent 25%),
+    linear-gradient(-45deg, #222 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #222 75%),
+    linear-gradient(-45deg, transparent 75%, #222 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+  background-color: #2a2a2a;
+  overflow: auto;
+  padding: 20px;
+}
+
+.preview-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.placeholder {
+  color: #666;
+  font-size: 14px;
+}
+
+.sidebar {
+  width: 280px;
+  background: #16213e;
+  border-left: 1px solid #0f3460;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.info {
+  font-size: 13px;
+  color: #888;
+  margin-bottom: 16px;
+}
