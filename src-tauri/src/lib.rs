@@ -63,12 +63,62 @@ fn remove_colors(base64_input: String, colors: Vec<ColorToRemove>) -> Result<Str
     Ok(format!("data:image/png;base64,{}", STANDARD.encode(buf.get_ref())))
 }
 
+#[derive(serde::Deserialize)]
+struct SplitLine {
+    position: u32,
+}
+
+#[derive(serde::Deserialize)]
+struct SplitConfig {
+    horizontal_lines: Vec<SplitLine>,  // y positions
+    vertical_lines: Vec<SplitLine>,    // x positions
+}
+
+#[command]
+fn split_image(base64_input: String, config: SplitConfig) -> Result<Vec<String>, String> {
+    let base64_clean = base64_input
+        .strip_prefix("data:image/png;base64,")
+        .unwrap_or(&base64_input);
+
+    let bytes = STANDARD.decode(base64_clean).map_err(|e| e.to_string())?;
+    let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
+    let (width, height) = img.dimensions();
+
+    // Build split points including edges
+    let mut y_points: Vec<u32> = vec![0];
+    y_points.extend(config.horizontal_lines.iter().map(|l| l.position));
+    y_points.push(height);
+
+    let mut x_points: Vec<u32> = vec![0];
+    x_points.extend(config.vertical_lines.iter().map(|l| l.position));
+    x_points.push(width);
+
+    let mut results = Vec::new();
+
+    // Iterate row by row, then column by column
+    for row in 0..y_points.len() - 1 {
+        for col in 0..x_points.len() - 1 {
+            let x = x_points[col];
+            let y = y_points[row];
+            let w = x_points[col + 1] - x;
+            let h = y_points[row + 1] - y;
+
+            let cropped = img.crop_imm(x, y, w, h);
+            let mut buf = Cursor::new(Vec::new());
+            cropped.write_to(&mut buf, ImageFormat::Png).map_err(|e| e.to_string())?;
+            results.push(format!("data:image/png;base64,{}", STANDARD.encode(buf.get_ref())));
+        }
+    }
+
+    Ok(results)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![load_image, remove_colors])
+        .invoke_handler(tauri::generate_handler![load_image, remove_colors, split_image])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
