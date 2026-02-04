@@ -12,12 +12,22 @@ use std::io::Cursor;
 pub struct SpriteInput {
     pub name: String,
     pub base64: String,
+    #[serde(rename = "offsetX", default)]
+    pub offset_x: i32,
+    #[serde(rename = "offsetY", default)]
+    pub offset_y: i32,
 }
 
 #[derive(Serialize)]
 pub struct AtlasOutput {
     pub image_base64: String,
     pub json: String,
+}
+
+#[derive(Serialize)]
+struct Pivot {
+    x: f32,
+    y: f32,
 }
 
 #[derive(Serialize)]
@@ -29,6 +39,15 @@ struct PhaserFrame {
     sprite_source_size: FrameRect,
     #[serde(rename = "sourceSize")]
     source_size: Size,
+    pivot: Pivot,
+    #[serde(rename = "offset")]
+    offset: Offset,
+}
+
+#[derive(Serialize)]
+struct Offset {
+    x: i32,
+    y: i32,
 }
 
 #[derive(Serialize)]
@@ -59,8 +78,8 @@ struct PhaserAtlas {
 }
 
 pub fn pack_atlas(sprites: Vec<SpriteInput>, padding: u32) -> Result<AtlasOutput, String> {
-    // Decode all images
-    let mut images: Vec<(String, DynamicImage)> = Vec::new();
+    // Decode all images and store offsets
+    let mut images: Vec<(String, DynamicImage, i32, i32)> = Vec::new();
 
     for sprite in &sprites {
         let base64_clean = sprite
@@ -69,7 +88,7 @@ pub fn pack_atlas(sprites: Vec<SpriteInput>, padding: u32) -> Result<AtlasOutput
             .unwrap_or(&sprite.base64);
         let bytes = STANDARD.decode(base64_clean).map_err(|e| e.to_string())?;
         let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
-        images.push((sprite.name.clone(), img));
+        images.push((sprite.name.clone(), img, sprite.offset_x, sprite.offset_y));
     }
 
     if images.is_empty() {
@@ -78,7 +97,7 @@ pub fn pack_atlas(sprites: Vec<SpriteInput>, padding: u32) -> Result<AtlasOutput
 
     // Prepare rectangles for packing
     let mut rects_to_place: GroupedRectsToPlace<usize, ()> = GroupedRectsToPlace::new();
-    for (i, (_, img)) in images.iter().enumerate() {
+    for (i, (_, img, _, _)) in images.iter().enumerate() {
         rects_to_place.push_rect(
             i,
             None,
@@ -128,7 +147,7 @@ pub fn pack_atlas(sprites: Vec<SpriteInput>, padding: u32) -> Result<AtlasOutput
     let mut frames = BTreeMap::new();
 
     for (rect_id, (_, loc)) in placements.packed_locations() {
-        let (name, img) = &images[*rect_id];
+        let (name, img, offset_x, offset_y) = &images[*rect_id];
 
         let x = loc.x() + padding;
         let y = loc.y() + padding;
@@ -138,7 +157,7 @@ pub fn pack_atlas(sprites: Vec<SpriteInput>, padding: u32) -> Result<AtlasOutput
         // Copy image to atlas
         output.copy_from(&img.to_rgba8(), x, y).map_err(|e| e.to_string())?;
 
-        // Add frame to JSON
+        // Add frame to JSON with offset
         frames.insert(
             name.clone(),
             PhaserFrame {
@@ -147,6 +166,8 @@ pub fn pack_atlas(sprites: Vec<SpriteInput>, padding: u32) -> Result<AtlasOutput
                 trimmed: false,
                 sprite_source_size: FrameRect { x: 0, y: 0, w, h },
                 source_size: Size { w, h },
+                pivot: Pivot { x: 0.5, y: 0.5 },
+                offset: Offset { x: *offset_x, y: *offset_y },
             },
         );
     }

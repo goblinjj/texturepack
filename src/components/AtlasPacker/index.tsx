@@ -7,6 +7,8 @@ interface SpriteFrame {
   id: string;
   name: string;
   base64: string;
+  offsetX: number;
+  offsetY: number;
 }
 
 interface Action {
@@ -45,6 +47,12 @@ interface AnimationPreview {
   fps: number;
 }
 
+interface SelectedFrame {
+  charIndex: number;
+  actionIndex: number;
+  frameIndex: number;
+}
+
 let frameIdCounter = 0;
 
 interface AtlasPackerProps {
@@ -75,6 +83,9 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
   // Animation preview state
   const [animPreview, setAnimPreview] = useState<AnimationPreview | null>(null);
   const animIntervalRef = useRef<number | null>(null);
+
+  // Selected frame for offset editing
+  const [selectedFrame, setSelectedFrame] = useState<SelectedFrame | null>(null);
 
   useEffect(() => {
     if (inputDialog.isOpen && inputRef.current) {
@@ -125,6 +136,8 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
           id: `frame-${frameIdCounter++}`,
           name: `${i}.png`,
           base64: f.base64,
+          offsetX: 0,
+          offsetY: 0,
         }));
 
         const newChar: Character = {
@@ -209,6 +222,8 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
         id: `frame-${frameIdCounter++}`,
         name: path.split("/").pop() || "unknown",
         base64: data.base64,
+        offsetX: 0,
+        offsetY: 0,
       });
     }
 
@@ -229,6 +244,35 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
 
   const removeCharacter = (charIndex: number) => {
     setCharacters(characters.filter((_, i) => i !== charIndex));
+  };
+
+  const updateFrameOffset = (charIndex: number, actionIndex: number, frameIndex: number, offsetX: number, offsetY: number) => {
+    setCharacters((prev) => {
+      return prev.map((char, cIdx) => {
+        if (cIdx !== charIndex) return char;
+        return {
+          ...char,
+          actions: char.actions.map((action, aIdx) => {
+            if (aIdx !== actionIndex) return action;
+            return {
+              ...action,
+              frames: action.frames.map((frame, fIdx) => {
+                if (fIdx !== frameIndex) return frame;
+                return { ...frame, offsetX, offsetY };
+              }),
+            };
+          }),
+        };
+      });
+    });
+  };
+
+  const selectFrame = (charIndex: number, actionIndex: number, frameIndex: number) => {
+    setSelectedFrame({ charIndex, actionIndex, frameIndex });
+  };
+
+  const closeFrameEditor = () => {
+    setSelectedFrame(null);
   };
 
   const toggleChar = (charIndex: number) => {
@@ -349,7 +393,7 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
   }, [animPreview?.isPlaying, animPreview?.fps, animPreview?.charIndex, animPreview?.actionIndex, characters, stopAnimation]);
 
   const generateAtlas = async () => {
-    const sprites: { name: string; base64: string }[] = [];
+    const sprites: { name: string; base64: string; offsetX: number; offsetY: number }[] = [];
 
     characters.forEach((char) => {
       char.actions.forEach((action) => {
@@ -357,6 +401,8 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
           sprites.push({
             name: `${char.name}_${action.name}_${frameIdx}`,
             base64: frame.base64,
+            offsetX: frame.offsetX,
+            offsetY: frame.offsetY,
           });
         });
       });
@@ -499,6 +545,12 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
                                     dragState?.actionIndex === actionIdx
                                       ? "drag-over"
                                       : ""
+                                  } ${
+                                    selectedFrame?.charIndex === charIdx &&
+                                    selectedFrame?.actionIndex === actionIdx &&
+                                    selectedFrame?.frameIndex === frameIdx
+                                      ? "selected"
+                                      : ""
                                   }`}
                                   draggable
                                   onDragStart={() => handleDragStart(charIdx, actionIdx, frameIdx)}
@@ -506,12 +558,18 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
                                   onDragLeave={handleDragLeave}
                                   onDrop={(e) => handleDrop(e, charIdx, actionIdx, frameIdx)}
                                   onDragEnd={handleDragEnd}
+                                  onClick={() => selectFrame(charIdx, actionIdx, frameIdx)}
                                 >
                                   <img src={frame.base64} alt="" draggable={false} />
                                   <span className="frame-index">{frameIdx}</span>
+                                  {(frame.offsetX !== 0 || frame.offsetY !== 0) && (
+                                    <span className="offset-indicator" title={`偏移: ${frame.offsetX}, ${frame.offsetY}`}>
+                                      ✦
+                                    </span>
+                                  )}
                                   <button
                                     className="remove-frame"
-                                    onClick={() => removeFrame(charIdx, actionIdx, frameIdx)}
+                                    onClick={(e) => { e.stopPropagation(); removeFrame(charIdx, actionIdx, frameIdx); }}
                                   >
                                     ×
                                   </button>
@@ -556,6 +614,56 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
             )}
           </div>
         </div>
+        {selectedFrame && (() => {
+          const frame = characters[selectedFrame.charIndex]?.actions[selectedFrame.actionIndex]?.frames[selectedFrame.frameIndex];
+          if (!frame) return null;
+          return (
+            <div className="frame-editor-panel">
+              <div className="frame-editor-header">
+                <span>帧偏移调整</span>
+                <button className="close-btn" onClick={closeFrameEditor}>×</button>
+              </div>
+              <div className="frame-editor-preview">
+                <div className="frame-preview-container">
+                  <img
+                    src={frame.base64}
+                    alt=""
+                    style={{ transform: `translate(${frame.offsetX}px, ${frame.offsetY}px)` }}
+                  />
+                  <div className="frame-crosshair" />
+                </div>
+              </div>
+              <div className="frame-editor-controls">
+                <div className="offset-control">
+                  <label>X 偏移:</label>
+                  <button onClick={() => updateFrameOffset(selectedFrame.charIndex, selectedFrame.actionIndex, selectedFrame.frameIndex, frame.offsetX - 1, frame.offsetY)}>-</button>
+                  <input
+                    type="number"
+                    value={frame.offsetX}
+                    onChange={(e) => updateFrameOffset(selectedFrame.charIndex, selectedFrame.actionIndex, selectedFrame.frameIndex, Number(e.target.value), frame.offsetY)}
+                  />
+                  <button onClick={() => updateFrameOffset(selectedFrame.charIndex, selectedFrame.actionIndex, selectedFrame.frameIndex, frame.offsetX + 1, frame.offsetY)}>+</button>
+                </div>
+                <div className="offset-control">
+                  <label>Y 偏移:</label>
+                  <button onClick={() => updateFrameOffset(selectedFrame.charIndex, selectedFrame.actionIndex, selectedFrame.frameIndex, frame.offsetX, frame.offsetY - 1)}>-</button>
+                  <input
+                    type="number"
+                    value={frame.offsetY}
+                    onChange={(e) => updateFrameOffset(selectedFrame.charIndex, selectedFrame.actionIndex, selectedFrame.frameIndex, frame.offsetX, Number(e.target.value))}
+                  />
+                  <button onClick={() => updateFrameOffset(selectedFrame.charIndex, selectedFrame.actionIndex, selectedFrame.frameIndex, frame.offsetX, frame.offsetY + 1)}>+</button>
+                </div>
+                <button
+                  className="reset-btn"
+                  onClick={() => updateFrameOffset(selectedFrame.charIndex, selectedFrame.actionIndex, selectedFrame.frameIndex, 0, 0)}
+                >
+                  重置
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
       {inputDialog.isOpen && (
         <div className="dialog-overlay">
