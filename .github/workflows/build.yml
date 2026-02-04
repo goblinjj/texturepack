@@ -8,16 +8,7 @@ on:
 
 jobs:
   build-macos:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: aarch64-apple-darwin
-            runner: macos-latest
-          - target: x86_64-apple-darwin
-            runner: macos-13
-
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-latest
 
     steps:
       - name: Checkout
@@ -36,17 +27,27 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Install dependencies
         run: pnpm install
 
-      - name: Build Tauri App
-        run: pnpm tauri build --target ${{ matrix.target }}
+      - name: Build aarch64
+        run: pnpm tauri build --target aarch64-apple-darwin
 
-      - name: Upload DMG
+      - name: Build x86_64
+        run: pnpm tauri build --target x86_64-apple-darwin
+
+      - name: Upload aarch64 DMG
         uses: actions/upload-artifact@v4
         with:
-          name: Sprite-Tool-${{ matrix.target }}
-          path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          name: Sprite-Tool-aarch64-apple-darwin
+          path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+
+      - name: Upload x86_64 DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sprite-Tool-x86_64-apple-darwin
+          path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
           if-no-files-found: error
