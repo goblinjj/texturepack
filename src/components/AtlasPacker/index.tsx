@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import "./styles.css";
@@ -31,6 +31,20 @@ interface InputDialogState {
   onConfirm: (value: string) => void;
 }
 
+interface DragState {
+  charIndex: number;
+  actionIndex: number;
+  frameIndex: number;
+}
+
+interface AnimationPreview {
+  charIndex: number;
+  actionIndex: number;
+  currentFrame: number;
+  isPlaying: boolean;
+  fps: number;
+}
+
 let frameIdCounter = 0;
 
 interface AtlasPackerProps {
@@ -53,6 +67,14 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
     onConfirm: () => {},
   });
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Drag and drop state
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  // Animation preview state
+  const [animPreview, setAnimPreview] = useState<AnimationPreview | null>(null);
+  const animIntervalRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (inputDialog.isOpen && inputRef.current) {
@@ -223,6 +245,109 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
     setExpandedActions(newSet);
   };
 
+  // Drag and drop handlers
+  const handleDragStart = (charIndex: number, actionIndex: number, frameIndex: number) => {
+    setDragState({ charIndex, actionIndex, frameIndex });
+  };
+
+  const handleDragOver = (e: React.DragEvent, frameIndex: number) => {
+    e.preventDefault();
+    setDragOverIndex(frameIndex);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, charIndex: number, actionIndex: number, targetIndex: number) => {
+    e.preventDefault();
+    setDragOverIndex(null);
+
+    if (!dragState) return;
+    if (dragState.charIndex !== charIndex || dragState.actionIndex !== actionIndex) return;
+    if (dragState.frameIndex === targetIndex) return;
+
+    setCharacters((prev) => {
+      const newChars = prev.map((char, cIdx) => {
+        if (cIdx !== charIndex) return char;
+        return {
+          ...char,
+          actions: char.actions.map((action, aIdx) => {
+            if (aIdx !== actionIndex) return action;
+            const newFrames = [...action.frames];
+            const [removed] = newFrames.splice(dragState.frameIndex, 1);
+            newFrames.splice(targetIndex, 0, removed);
+            return { ...action, frames: newFrames };
+          }),
+        };
+      });
+      return newChars;
+    });
+
+    setDragState(null);
+  };
+
+  const handleDragEnd = () => {
+    setDragState(null);
+    setDragOverIndex(null);
+  };
+
+  // Animation preview handlers
+  const startAnimation = useCallback((charIndex: number, actionIndex: number) => {
+    const action = characters[charIndex]?.actions[actionIndex];
+    if (!action || action.frames.length === 0) return;
+
+    // Stop any existing animation
+    if (animIntervalRef.current) {
+      clearInterval(animIntervalRef.current);
+    }
+
+    setAnimPreview({
+      charIndex,
+      actionIndex,
+      currentFrame: 0,
+      isPlaying: true,
+      fps: 12,
+    });
+  }, [characters]);
+
+  const stopAnimation = useCallback(() => {
+    if (animIntervalRef.current) {
+      clearInterval(animIntervalRef.current);
+      animIntervalRef.current = null;
+    }
+    setAnimPreview(null);
+  }, []);
+
+  const setAnimationFps = useCallback((fps: number) => {
+    setAnimPreview((prev) => prev ? { ...prev, fps } : null);
+  }, []);
+
+  // Animation loop
+  useEffect(() => {
+    if (!animPreview?.isPlaying) return;
+
+    const action = characters[animPreview.charIndex]?.actions[animPreview.actionIndex];
+    if (!action || action.frames.length === 0) {
+      stopAnimation();
+      return;
+    }
+
+    animIntervalRef.current = window.setInterval(() => {
+      setAnimPreview((prev) => {
+        if (!prev) return null;
+        const nextFrame = (prev.currentFrame + 1) % action.frames.length;
+        return { ...prev, currentFrame: nextFrame };
+      });
+    }, 1000 / animPreview.fps);
+
+    return () => {
+      if (animIntervalRef.current) {
+        clearInterval(animIntervalRef.current);
+      }
+    };
+  }, [animPreview?.isPlaying, animPreview?.fps, animPreview?.charIndex, animPreview?.actionIndex, characters, stopAnimation]);
+
   const generateAtlas = async () => {
     const sprites: { name: string; base64: string }[] = [];
 
@@ -334,6 +459,16 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
                             >
                               {action.name}
                             </span>
+                            <span className="frame-count">({action.frames.length})</span>
+                            {action.frames.length > 0 && (
+                              <button
+                                className="small-btn play-btn"
+                                onClick={(e) => { e.stopPropagation(); startAnimation(charIdx, actionIdx); }}
+                                title="预览动画"
+                              >
+                                ▶
+                              </button>
+                            )}
                             <button
                               className="small-btn"
                               onClick={(e) => { e.stopPropagation(); addFrames(charIdx, actionIdx); }}
@@ -350,8 +485,29 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
                           {expandedActions.has(actionKey) && (
                             <div className="frame-list">
                               {action.frames.map((frame, frameIdx) => (
-                                <div key={frame.id} className="frame-item">
-                                  <img src={frame.base64} alt="" />
+                                <div
+                                  key={frame.id}
+                                  className={`frame-item ${
+                                    dragState?.charIndex === charIdx &&
+                                    dragState?.actionIndex === actionIdx &&
+                                    dragState?.frameIndex === frameIdx
+                                      ? "dragging"
+                                      : ""
+                                  } ${
+                                    dragOverIndex === frameIdx &&
+                                    dragState?.charIndex === charIdx &&
+                                    dragState?.actionIndex === actionIdx
+                                      ? "drag-over"
+                                      : ""
+                                  }`}
+                                  draggable
+                                  onDragStart={() => handleDragStart(charIdx, actionIdx, frameIdx)}
+                                  onDragOver={(e) => handleDragOver(e, frameIdx)}
+                                  onDragLeave={handleDragLeave}
+                                  onDrop={(e) => handleDrop(e, charIdx, actionIdx, frameIdx)}
+                                  onDragEnd={handleDragEnd}
+                                >
+                                  <img src={frame.base64} alt="" draggable={false} />
                                   <span className="frame-index">{frameIdx}</span>
                                   <button
                                     className="remove-frame"
@@ -418,6 +574,43 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
             <div className="dialog-buttons">
               <button onClick={handleInputCancel}>取消</button>
               <button className="primary" onClick={handleInputConfirm}>确定</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {animPreview && (
+        <div className="dialog-overlay" onClick={stopAnimation}>
+          <div className="anim-preview-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="anim-preview-header">
+              <span>
+                动画预览 - {characters[animPreview.charIndex]?.name} / {characters[animPreview.charIndex]?.actions[animPreview.actionIndex]?.name}
+              </span>
+              <button className="close-btn" onClick={stopAnimation}>×</button>
+            </div>
+            <div className="anim-preview-content">
+              {(() => {
+                const action = characters[animPreview.charIndex]?.actions[animPreview.actionIndex];
+                const frame = action?.frames[animPreview.currentFrame];
+                return frame ? (
+                  <img src={frame.base64} alt="" />
+                ) : null;
+              })()}
+            </div>
+            <div className="anim-preview-controls">
+              <label>
+                FPS:
+                <input
+                  type="range"
+                  min="1"
+                  max="60"
+                  value={animPreview.fps}
+                  onChange={(e) => setAnimationFps(Number(e.target.value))}
+                />
+                <span>{animPreview.fps}</span>
+              </label>
+              <span className="frame-indicator">
+                帧: {animPreview.currentFrame + 1} / {characters[animPreview.charIndex]?.actions[animPreview.actionIndex]?.frames.length || 0}
+              </span>
             </div>
           </div>
         </div>
