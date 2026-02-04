@@ -16,7 +16,11 @@ interface ColorEntry {
   tolerance: number;
 }
 
-export function Preprocessor() {
+interface PreprocessorProps {
+  onExportToAtlas?: (frames: { base64: string }[]) => void;
+}
+
+export function Preprocessor({ onExportToAtlas }: PreprocessorProps) {
   const [image, setImage] = useState<ImageData | null>(null);
   const [processedImage, setProcessedImage] = useState<string | null>(null);
   const [colors, setColors] = useState<ColorEntry[]>([]);
@@ -284,6 +288,21 @@ export function Preprocessor() {
       <div className="toolbar">
         <button onClick={handleOpenImage}>打开图片</button>
         {image && <button onClick={handleExport}>导出分割图</button>}
+        {image && onExportToAtlas && (
+          <button onClick={async () => {
+            const config = {
+              horizontal_lines: hLines.map((y) => ({ position: y })),
+              vertical_lines: vLines.map((x) => ({ position: x })),
+            };
+            const splitImages = await invoke<string[]>("split_image", {
+              base64Input: processedImage,
+              config,
+            });
+            onExportToAtlas(splitImages.map(base64 => ({ base64 })));
+          }}>
+            导出到 Atlas
+          </button>
+        )}
       </div>
       <div className="workspace">
         <div className="canvas-area" ref={containerRef}>

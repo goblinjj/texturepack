@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import "./styles.css";
@@ -26,13 +26,42 @@ interface AtlasOutput {
 
 let frameIdCounter = 0;
 
-export function AtlasPacker() {
+interface AtlasPackerProps {
+  importedFrames?: { base64: string }[];
+  onClearImport?: () => void;
+}
+
+export function AtlasPacker({ importedFrames, onClearImport }: AtlasPackerProps) {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [atlasPreview, setAtlasPreview] = useState<string | null>(null);
   const [atlasJson, setAtlasJson] = useState<string | null>(null);
   const [padding, setPadding] = useState(2);
   const [expandedChars, setExpandedChars] = useState<Set<string>>(new Set());
   const [expandedActions, setExpandedActions] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (importedFrames && importedFrames.length > 0) {
+      const charName = prompt("输入人物名称:", "character") || "character";
+      const actionName = prompt("输入动作名称:", "action") || "action";
+
+      const newFrames = importedFrames.map((f, i) => ({
+        id: `frame-${frameIdCounter++}`,
+        name: `${i}.png`,
+        base64: f.base64,
+      }));
+
+      const newChar: Character = {
+        name: charName,
+        actions: [{ name: actionName, frames: newFrames }],
+      };
+
+      setCharacters([...characters, newChar]);
+      setExpandedChars(new Set([...expandedChars, charName]));
+      setExpandedActions(new Set([...expandedActions, `${characters.length}-${actionName}`]));
+
+      onClearImport?.();
+    }
+  }, [importedFrames]);
 
   const addCharacter = () => {
     const name = prompt("输入人物名称:");

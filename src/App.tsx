@@ -5,8 +5,18 @@ import "./App.css";
 
 type Tab = "preprocess" | "atlas";
 
+export interface ExportedFrame {
+  base64: string;
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("preprocess");
+  const [exportedFrames, setExportedFrames] = useState<ExportedFrame[]>([]);
+
+  const handleExportToAtlas = (frames: ExportedFrame[]) => {
+    setExportedFrames(frames);
+    setActiveTab("atlas");
+  };
 
   return (
     <div className="app">
@@ -25,7 +35,11 @@ function App() {
         </button>
       </nav>
       <main className="content">
-        {activeTab === "preprocess" ? <Preprocessor /> : <AtlasPacker />}
+        {activeTab === "preprocess" ? (
+          <Preprocessor onExportToAtlas={handleExportToAtlas} />
+        ) : (
+          <AtlasPacker importedFrames={exportedFrames} onClearImport={() => setExportedFrames([])} />
+        )}
       </main>
     </div>
   );
