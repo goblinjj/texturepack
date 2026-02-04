@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import "./styles.css";
@@ -24,6 +24,13 @@ interface AtlasOutput {
   json: string;
 }
 
+interface InputDialogState {
+  isOpen: boolean;
+  title: string;
+  defaultValue: string;
+  onConfirm: (value: string) => void;
+}
+
 let frameIdCounter = 0;
 
 interface AtlasPackerProps {
@@ -36,47 +43,125 @@ export function AtlasPacker({ importedFrames, onClearImport }: AtlasPackerProps)
   const [atlasPreview, setAtlasPreview] = useState<string | null>(null);
   const [atlasJson, setAtlasJson] = useState<string | null>(null);
   const [padding, setPadding] = useState(2);
-  const [expandedChars, setExpandedChars] = useState<Set<string>>(new Set());
+  const [expandedChars, setExpandedChars] = useState<Set<number>>(new Set());
   const [expandedActions, setExpandedActions] = useState<Set<string>>(new Set());
+  const [inputDialog, setInputDialog] = useState<InputDialogState>({
+    isOpen: false,
+    title: "",
+    defaultValue: "",
+    onConfirm: () => {},
+  });
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (inputDialog.isOpen && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [inputDialog.isOpen]);
+
+  const showInputDialog = (title: string, defaultValue: string): Promise<string | null> => {
+    return new Promise((resolve) => {
+      setInputDialog({
+        isOpen: true,
+        title,
+        defaultValue,
+        onConfirm: (value) => {
+          setInputDialog((prev) => ({ ...prev, isOpen: false }));
+          resolve(value);
+        },
+      });
+    });
+  };
+
+  const handleInputCancel = () => {
+    setInputDialog((prev) => ({ ...prev, isOpen: false }));
+    inputDialog.onConfirm("");
+  };
+
+  const handleInputConfirm = () => {
+    const value = inputRef.current?.value || "";
+    inputDialog.onConfirm(value);
+  };
 
   useEffect(() => {
     if (importedFrames && importedFrames.length > 0) {
-      const charName = prompt("输入人物名称:", "character") || "character";
-      const actionName = prompt("输入动作名称:", "action") || "action";
+      (async () => {
+        const charName = await showInputDialog("输入人物名称", "character");
+        if (!charName) {
+          onClearImport?.();
+          return;
+        }
+        const actionName = await showInputDialog("输入动作名称", "action");
+        if (!actionName) {
+          onClearImport?.();
+          return;
+        }
 
-      const newFrames = importedFrames.map((f, i) => ({
-        id: `frame-${frameIdCounter++}`,
-        name: `${i}.png`,
-        base64: f.base64,
-      }));
+        const newFrames = importedFrames.map((f, i) => ({
+          id: `frame-${frameIdCounter++}`,
+          name: `${i}.png`,
+          base64: f.base64,
+        }));
 
-      const newChar: Character = {
-        name: charName,
-        actions: [{ name: actionName, frames: newFrames }],
-      };
+        const newChar: Character = {
+          name: charName,
+          actions: [{ name: actionName, frames: newFrames }],
+        };
 
-      setCharacters([...characters, newChar]);
-      setExpandedChars(new Set([...expandedChars, charName]));
-      setExpandedActions(new Set([...expandedActions, `${characters.length}-${actionName}`]));
+        setCharacters((prev) => {
+          const newChars = [...prev, newChar];
+          setExpandedChars(new Set([...expandedChars, newChars.length - 1]));
+          setExpandedActions(new Set([...expandedActions, `${newChars.length - 1}-0`]));
+          return newChars;
+        });
 
-      onClearImport?.();
+        onClearImport?.();
+      })();
     }
   }, [importedFrames]);
 
-  const addCharacter = () => {
-    const name = prompt("输入人物名称:");
+  const addCharacter = async () => {
+    const name = await showInputDialog("输入人物名称", "");
     if (!name) return;
-    setCharacters([...characters, { name, actions: [] }]);
-    setExpandedChars(new Set([...expandedChars, name]));
+    setCharacters((prev) => {
+      const newChars = [...prev, { name, actions: [] }];
+      setExpandedChars(new Set([...expandedChars, newChars.length - 1]));
+      return newChars;
+    });
   };
 
-  const addAction = (charIndex: number) => {
-    const name = prompt("输入动作名称:");
+  const addAction = async (charIndex: number) => {
+    const name = await showInputDialog("输入动作名称", "");
     if (!name) return;
-    const newChars = [...characters];
-    newChars[charIndex].actions.push({ name, frames: [] });
-    setCharacters(newChars);
-    setExpandedActions(new Set([...expandedActions, `${charIndex}-${name}`]));
+    setCharacters((prev) => {
+      const newChars = [...prev];
+      newChars[charIndex].actions.push({ name, frames: [] });
+      setExpandedActions(new Set([...expandedActions, `${charIndex}-${newChars[charIndex].actions.length - 1}`]));
+      return newChars;
+    });
+  };
+
+  const renameCharacter = async (charIndex: number) => {
+    const currentName = characters[charIndex].name;
+    const newName = await showInputDialog("重命名人物", currentName);
+    if (!newName || newName === currentName) return;
+    setCharacters((prev) => {
+      const newChars = [...prev];
+      newChars[charIndex].name = newName;
+      return newChars;
+    });
+  };
+
+  const renameAction = async (charIndex: number, actionIndex: number) => {
+    const currentName = characters[charIndex].actions[actionIndex].name;
+    const newName = await showInputDialog("重命名动作", currentName);
+    if (!newName || newName === currentName) return;
+    setCharacters((prev) => {
+      const newChars = [...prev];
+      newChars[charIndex].actions[actionIndex].name = newName;
+      return newChars;
+    });
   };
 
   const addFrames = async (charIndex: number, actionIndex: number) => {
@@ -118,10 +203,10 @@ export function AtlasPacker({ importedFrames, onClearImport }: AtlasPackerProps)
     setCharacters(characters.filter((_, i) => i !== charIndex));
   };
 
-  const toggleChar = (name: string) => {
+  const toggleChar = (charIndex: number) => {
     const newSet = new Set(expandedChars);
-    if (newSet.has(name)) newSet.delete(name);
-    else newSet.add(name);
+    if (newSet.has(charIndex)) newSet.delete(charIndex);
+    else newSet.add(charIndex);
     setExpandedChars(newSet);
   };
 
@@ -190,12 +275,18 @@ export function AtlasPacker({ importedFrames, onClearImport }: AtlasPackerProps)
         <div className="group-panel">
           <div className="group-tree">
             {characters.map((char, charIdx) => (
-              <div key={char.name} className="tree-node">
-                <div className="node-header" onClick={() => toggleChar(char.name)}>
+              <div key={charIdx} className="tree-node">
+                <div className="node-header" onClick={() => toggleChar(charIdx)}>
                   <span className="toggle">
-                    {expandedChars.has(char.name) ? "▼" : "▶"}
+                    {expandedChars.has(charIdx) ? "▼" : "▶"}
                   </span>
-                  <span className="node-name">{char.name}</span>
+                  <span
+                    className="node-name"
+                    onDoubleClick={(e) => { e.stopPropagation(); renameCharacter(charIdx); }}
+                    title="双击重命名"
+                  >
+                    {char.name}
+                  </span>
                   <button
                     className="small-btn"
                     onClick={(e) => { e.stopPropagation(); addAction(charIdx); }}
@@ -209,12 +300,12 @@ export function AtlasPacker({ importedFrames, onClearImport }: AtlasPackerProps)
                     ×
                   </button>
                 </div>
-                {expandedChars.has(char.name) && (
+                {expandedChars.has(charIdx) && (
                   <div className="node-children">
                     {char.actions.map((action, actionIdx) => {
-                      const actionKey = `${charIdx}-${action.name}`;
+                      const actionKey = `${charIdx}-${actionIdx}`;
                       return (
-                        <div key={action.name} className="tree-node">
+                        <div key={actionIdx} className="tree-node">
                           <div
                             className="node-header"
                             onClick={() => toggleAction(actionKey)}
@@ -222,7 +313,13 @@ export function AtlasPacker({ importedFrames, onClearImport }: AtlasPackerProps)
                             <span className="toggle">
                               {expandedActions.has(actionKey) ? "▼" : "▶"}
                             </span>
-                            <span className="node-name">{action.name}</span>
+                            <span
+                              className="node-name"
+                              onDoubleClick={(e) => { e.stopPropagation(); renameAction(charIdx, actionIdx); }}
+                              title="双击重命名"
+                            >
+                              {action.name}
+                            </span>
                             <button
                               className="small-btn"
                               onClick={(e) => { e.stopPropagation(); addFrames(charIdx, actionIdx); }}
@@ -290,6 +387,27 @@ export function AtlasPacker({ importedFrames, onClearImport }: AtlasPackerProps)
           </div>
         </div>
       </div>
+      {inputDialog.isOpen && (
+        <div className="dialog-overlay">
+          <div className="dialog">
+            <div className="dialog-title">{inputDialog.title}</div>
+            <input
+              ref={inputRef}
+              type="text"
+              className="dialog-input"
+              defaultValue={inputDialog.defaultValue}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleInputConfirm();
+                if (e.key === "Escape") handleInputCancel();
+              }}
+            />
+            <div className="dialog-buttons">
+              <button onClick={handleInputCancel}>取消</button>
+              <button className="primary" onClick={handleInputConfirm}>确定</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -85,20 +85,14 @@ fn split_image(base64_input: String, config: SplitConfig) -> Result<Vec<String>,
 
     let bytes = STANDARD.decode(base64_clean).map_err(|e| e.to_string())?;
     let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
-    let (width, height) = img.dimensions();
 
-    // Build split points including edges
-    let mut y_points: Vec<u32> = vec![0];
-    y_points.extend(config.horizontal_lines.iter().map(|l| l.position));
-    y_points.push(height);
-
-    let mut x_points: Vec<u32> = vec![0];
-    x_points.extend(config.vertical_lines.iter().map(|l| l.position));
-    x_points.push(width);
+    // Use lines directly from config (they already include boundaries)
+    let y_points: Vec<u32> = config.horizontal_lines.iter().map(|l| l.position).collect();
+    let x_points: Vec<u32> = config.vertical_lines.iter().map(|l| l.position).collect();
 
     let mut results = Vec::new();
 
-    // Iterate row by row, then column by column
+    // Iterate row by row, then column by column (within boundaries)
     for row in 0..y_points.len() - 1 {
         for col in 0..x_points.len() - 1 {
             let x = x_points[col];

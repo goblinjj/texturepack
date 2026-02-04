@@ -55,17 +55,19 @@ export function Preprocessor({ onExportToAtlas }: PreprocessorProps) {
     }
   };
 
-  // Generate equal split lines
+  // Generate equal split lines (including boundary lines)
   useEffect(() => {
     if (!image) return;
-    const newHLines: number[] = [];
-    const newVLines: number[] = [];
+    const newHLines: number[] = [0]; // Start with top boundary
+    const newVLines: number[] = [0]; // Start with left boundary
     for (let i = 1; i < rows; i++) {
       newHLines.push(Math.round((image.height / rows) * i));
     }
     for (let i = 1; i < cols; i++) {
       newVLines.push(Math.round((image.width / cols) * i));
     }
+    newHLines.push(image.height); // End with bottom boundary
+    newVLines.push(image.width);  // End with right boundary
     setHLines(newHLines);
     setVLines(newVLines);
   }, [rows, cols, image]);
@@ -91,25 +93,55 @@ export function Preprocessor({ onExportToAtlas }: PreprocessorProps) {
     const scaleX = rect.width / image.width;
     const scaleY = rect.height / image.height;
 
-    ctx.strokeStyle = "#e94560";
-    ctx.lineWidth = 2;
-    ctx.setLineDash([5, 5]);
+    // Get boundary positions
+    const leftBoundary = offsetX + vLines[0] * scaleX;
+    const rightBoundary = offsetX + vLines[vLines.length - 1] * scaleX;
+    const topBoundary = offsetY + hLines[0] * scaleY;
+    const bottomBoundary = offsetY + hLines[hLines.length - 1] * scaleY;
 
-    // Draw horizontal lines
-    hLines.forEach((y) => {
+    // Draw black overlay for discarded areas (outside boundaries)
+    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+
+    // Top discarded area
+    if (topBoundary > offsetY) {
+      ctx.fillRect(offsetX, offsetY, rect.width, topBoundary - offsetY);
+    }
+    // Bottom discarded area
+    if (bottomBoundary < offsetY + rect.height) {
+      ctx.fillRect(offsetX, bottomBoundary, rect.width, offsetY + rect.height - bottomBoundary);
+    }
+    // Left discarded area (between top and bottom boundaries)
+    if (leftBoundary > offsetX) {
+      ctx.fillRect(offsetX, topBoundary, leftBoundary - offsetX, bottomBoundary - topBoundary);
+    }
+    // Right discarded area (between top and bottom boundaries)
+    if (rightBoundary < offsetX + rect.width) {
+      ctx.fillRect(rightBoundary, topBoundary, offsetX + rect.width - rightBoundary, bottomBoundary - topBoundary);
+    }
+
+    // Draw split lines
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 2;
+
+    // Draw horizontal lines (first and last are boundaries - solid, others are dashed)
+    hLines.forEach((y, i) => {
       const screenY = offsetY + y * scaleY;
+      const isBoundary = i === 0 || i === hLines.length - 1;
+      ctx.setLineDash(isBoundary ? [] : [5, 5]);
       ctx.beginPath();
-      ctx.moveTo(offsetX, screenY);
-      ctx.lineTo(offsetX + rect.width, screenY);
+      ctx.moveTo(leftBoundary, screenY);
+      ctx.lineTo(rightBoundary, screenY);
       ctx.stroke();
     });
 
-    // Draw vertical lines
-    vLines.forEach((x) => {
+    // Draw vertical lines (first and last are boundaries - solid, others are dashed)
+    vLines.forEach((x, i) => {
       const screenX = offsetX + x * scaleX;
+      const isBoundary = i === 0 || i === vLines.length - 1;
+      ctx.setLineDash(isBoundary ? [] : [5, 5]);
       ctx.beginPath();
-      ctx.moveTo(screenX, offsetY);
-      ctx.lineTo(screenX, offsetY + rect.height);
+      ctx.moveTo(screenX, topBoundary);
+      ctx.lineTo(screenX, bottomBoundary);
       ctx.stroke();
     });
   }, [hLines, vLines, image, showSplitLines]);
@@ -227,9 +259,9 @@ export function Preprocessor({ onExportToAtlas }: PreprocessorProps) {
       const mouseY = e.clientY - containerRect.top;
       let newY = Math.round((mouseY - offsetY) / scaleY);
 
-      // Clamp between adjacent lines
-      const minY = dragging.index === 0 ? 1 : hLines[dragging.index - 1] + 1;
-      const maxY = dragging.index === hLines.length - 1 ? image.height - 1 : hLines[dragging.index + 1] - 1;
+      // Clamp between adjacent lines (boundaries can go to image edges)
+      const minY = dragging.index === 0 ? 0 : hLines[dragging.index - 1] + 1;
+      const maxY = dragging.index === hLines.length - 1 ? image.height : hLines[dragging.index + 1] - 1;
       newY = Math.max(minY, Math.min(maxY, newY));
 
       const newHLines = [...hLines];
@@ -239,8 +271,9 @@ export function Preprocessor({ onExportToAtlas }: PreprocessorProps) {
       const mouseX = e.clientX - containerRect.left;
       let newX = Math.round((mouseX - offsetX) / scaleX);
 
-      const minX = dragging.index === 0 ? 1 : vLines[dragging.index - 1] + 1;
-      const maxX = dragging.index === vLines.length - 1 ? image.width - 1 : vLines[dragging.index + 1] - 1;
+      // Clamp between adjacent lines (boundaries can go to image edges)
+      const minX = dragging.index === 0 ? 0 : vLines[dragging.index - 1] + 1;
+      const maxX = dragging.index === vLines.length - 1 ? image.width : vLines[dragging.index + 1] - 1;
       newX = Math.max(minX, Math.min(maxX, newX));
 
       const newVLines = [...vLines];
@@ -319,6 +352,7 @@ export function Preprocessor({ onExportToAtlas }: PreprocessorProps) {
               <canvas
                 ref={overlayRef}
                 className="overlay-canvas"
+                style={{ pointerEvents: pickingColor ? "none" : "auto" }}
                 onMouseDown={handleOverlayMouseDown}
                 onMouseMove={handleOverlayMouseMove}
                 onMouseUp={handleOverlayMouseUp}
