@@ -38,36 +38,60 @@ jobs:
         run: pnpm install
 
       - name: Build aarch64
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "10.13"
         run: pnpm tauri build --target aarch64-apple-darwin
 
       - name: Build x86_64
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "10.13"
         run: pnpm tauri build --target x86_64-apple-darwin
 
-      - name: Upload aarch64 DMG
+      - name: Upload aarch64 artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Sprite-Tool-aarch64-apple-darwin
-          path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
-          if-no-files-found: error
+          path: |
+            src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app
+          if-no-files-found: warn
 
-      - name: Upload x86_64 DMG
+      - name: Upload x86_64 artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Sprite-Tool-x86_64-apple-darwin
-          path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
-          if-no-files-found: error
+          path: |
+            src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app
+          if-no-files-found: warn
 
-      - name: Rename DMGs for release
+      - name: Prepare release assets
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           mkdir -p release-assets
-          cp src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg release-assets/Sprite-Tool-${{ github.ref_name }}-aarch64-apple-darwin.dmg
-          cp src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg release-assets/Sprite-Tool-${{ github.ref_name }}-x86_64-apple-darwin.dmg
+
+          # Try to copy DMGs, fallback to zipping .app bundles
+          if [ -f src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg ]; then
+            cp src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg release-assets/Sprite-Tool-${{ github.ref_name }}-aarch64-apple-darwin.dmg
+          elif [ -d "src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Sprite Tool.app" ]; then
+            cd src-tauri/target/aarch64-apple-darwin/release/bundle/macos
+            zip -r ../../../../../../release-assets/Sprite-Tool-${{ github.ref_name }}-aarch64-apple-darwin.app.zip "Sprite Tool.app"
+            cd -
+          fi
+
+          if [ -f src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg ]; then
+            cp src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg release-assets/Sprite-Tool-${{ github.ref_name }}-x86_64-apple-darwin.dmg
+          elif [ -d "src-tauri/target/x86_64-apple-darwin/release/bundle/macos/Sprite Tool.app" ]; then
+            cd src-tauri/target/x86_64-apple-darwin/release/bundle/macos
+            zip -r ../../../../../../release-assets/Sprite-Tool-${{ github.ref_name }}-x86_64-apple-darwin.app.zip "Sprite Tool.app"
+            cd -
+          fi
+
+          ls -la release-assets/
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: release-assets/*.dmg
+          files: release-assets/*
           generate_release_notes: true
-          fail_on_unmatched_files: true
