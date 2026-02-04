@@ -42,8 +42,18 @@
 
 从 [Releases](https://github.com/goblinjj/texturepack/releases) 页面下载对应系统的安装包：
 
-- **macOS (Apple Silicon)**: `Sprite-Tool-vx.x.x-aarch64-apple-darwin.dmg`
-- **macOS (Intel)**: `Sprite-Tool-vx.x.x-x86_64-apple-darwin.dmg`
+**macOS**
+- **Apple Silicon**: `Sprite-Tool-vx.x.x-aarch64-apple-darwin.dmg`
+- **Intel**: `Sprite-Tool-vx.x.x-x86_64-apple-darwin.dmg`
+
+**Windows**
+- **安装包 (推荐)**: `Sprite-Tool-vx.x.x-x86_64-windows-setup.exe`
+- **MSI 安装包**: `Sprite-Tool-vx.x.x-x86_64-windows.msi`
+
+**Linux**
+- **AppImage (通用)**: `Sprite-Tool-vx.x.x-x86_64-linux.AppImage`
+- **Debian/Ubuntu**: `Sprite-Tool-vx.x.x-x86_64-linux.deb`
+- **Fedora/RHEL**: `Sprite-Tool-vx.x.x-x86_64-linux.rpm`
 
 ### 从源码构建
 
