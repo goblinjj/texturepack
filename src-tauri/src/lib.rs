@@ -2,7 +2,7 @@ mod atlas_packer;
 
 use atlas_packer::{pack_atlas, SpriteInput, AtlasOutput};
 use base64::{engine::general_purpose::STANDARD, Engine};
-use image::{GenericImageView, ImageFormat};
+use image::{imageops::FilterType, GenericImageView, ImageFormat};
 use std::io::Cursor;
 use tauri::command;
 
@@ -132,13 +132,105 @@ fn save_file(content: String, path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(serde::Serialize)]
+struct CompressResult {
+    base64: String,
+    width: u32,
+    height: u32,
+    size_bytes: usize,
+}
+
+#[command]
+fn compress_image(base64_input: String, quality: u8, scale: u8) -> Result<CompressResult, String> {
+    let base64_clean = base64_input
+        .strip_prefix("data:image/png;base64,")
+        .unwrap_or(&base64_input);
+
+    let bytes = STANDARD.decode(base64_clean).map_err(|e| e.to_string())?;
+    let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
+    let (orig_width, orig_height) = img.dimensions();
+
+    // Apply scale
+    let new_width = (orig_width as f32 * scale as f32 / 100.0).round() as u32;
+    let new_height = (orig_height as f32 * scale as f32 / 100.0).round() as u32;
+
+    let resized = if scale < 100 {
+        img.resize_exact(new_width, new_height, FilterType::Lanczos3)
+    } else {
+        img
+    };
+
+    let rgba = resized.to_rgba8();
+    let (width, height) = rgba.dimensions();
+
+    // Convert to RGBA pixels for imagequant
+    let pixels: Vec<imagequant::RGBA> = rgba
+        .pixels()
+        .map(|p| imagequant::RGBA::new(p[0], p[1], p[2], p[3]))
+        .collect();
+
+    // Use imagequant for color quantization (lossy PNG compression)
+    let mut liq = imagequant::new();
+    liq.set_quality(0, quality).map_err(|e| e.to_string())?;
+
+    let mut img_liq = liq.new_image(
+        pixels,
+        width as usize,
+        height as usize,
+        0.0
+    ).map_err(|e| e.to_string())?;
+
+    let mut res = liq.quantize(&mut img_liq).map_err(|e| e.to_string())?;
+    res.set_dithering_level(1.0).map_err(|e| e.to_string())?;
+
+    let (palette, indexed_pixels) = res.remapped(&mut img_liq).map_err(|e| e.to_string())?;
+
+    // Encode with lodepng
+    let mut encoder = lodepng::Encoder::new();
+    encoder.set_auto_convert(false);
+    encoder.info_raw_mut().colortype = lodepng::ColorType::PALETTE;
+    encoder.info_raw_mut().set_bitdepth(8);
+    encoder.info_png_mut().color.colortype = lodepng::ColorType::PALETTE;
+    encoder.info_png_mut().color.set_bitdepth(8);
+
+    for color in &palette {
+        encoder.info_raw_mut().palette_add(lodepng::RGBA { r: color.r, g: color.g, b: color.b, a: color.a })
+            .map_err(|e| e.to_string())?;
+        encoder.info_png_mut().color.palette_add(lodepng::RGBA { r: color.r, g: color.g, b: color.b, a: color.a })
+            .map_err(|e| e.to_string())?;
+    }
+
+    let png_data = encoder.encode(&indexed_pixels, width as usize, height as usize)
+        .map_err(|e| e.to_string())?;
+
+    let size_bytes = png_data.len();
+    let base64_output = format!("data:image/png;base64,{}", STANDARD.encode(&png_data));
+
+    Ok(CompressResult {
+        base64: base64_output,
+        width,
+        height,
+        size_bytes,
+    })
+}
+
+#[command]
+fn get_image_size(base64_input: String) -> Result<usize, String> {
+    let base64_clean = base64_input
+        .strip_prefix("data:image/png;base64,")
+        .unwrap_or(&base64_input);
+    let bytes = STANDARD.decode(base64_clean).map_err(|e| e.to_string())?;
+    Ok(bytes.len())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
-            load_image, remove_colors, split_image, save_image, create_atlas, save_file
+            load_image, remove_colors, split_image, save_image, create_atlas, save_file,
+            compress_image, get_image_size
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

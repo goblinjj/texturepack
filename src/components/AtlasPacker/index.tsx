@@ -36,9 +36,10 @@ let frameIdCounter = 0;
 interface AtlasPackerProps {
   importedFrames?: { base64: string }[];
   onClearImport?: () => void;
+  onExportToCompress?: (imageBase64: string) => void;
 }
 
-export function AtlasPacker({ importedFrames, onClearImport }: AtlasPackerProps) {
+export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress }: AtlasPackerProps) {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [atlasPreview, setAtlasPreview] = useState<string | null>(null);
   const [atlasJson, setAtlasJson] = useState<string | null>(null);
@@ -275,6 +276,14 @@ export function AtlasPacker({ importedFrames, onClearImport }: AtlasPackerProps)
         <button onClick={exportAtlas} disabled={!atlasPreview}>
           导出 Atlas + JSON
         </button>
+        {onExportToCompress && (
+          <button
+            onClick={() => atlasPreview && onExportToCompress(atlasPreview)}
+            disabled={!atlasPreview}
+          >
+            导出到压缩
+          </button>
+        )}
       </div>
       <div className="workspace">
         <div className="group-panel">

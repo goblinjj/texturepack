@@ -26,4 +26,6 @@ image = "0.25"
 base64 = "0.22"
 tauri-plugin-dialog = "2.6.0"
 rectangle-pack = "0.4"
+imagequant = "4"
+lodepng = "3"
 
