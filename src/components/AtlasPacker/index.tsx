@@ -135,9 +135,14 @@ export function AtlasPacker({ importedFrames, onClearImport }: AtlasPackerProps)
     const name = await showInputDialog("输入动作名称", "");
     if (!name) return;
     setCharacters((prev) => {
-      const newChars = [...prev];
-      newChars[charIndex].actions.push({ name, frames: [] });
-      setExpandedActions(new Set([...expandedActions, `${charIndex}-${newChars[charIndex].actions.length - 1}`]));
+      const newChars = prev.map((char, idx) => {
+        if (idx !== charIndex) return char;
+        return {
+          ...char,
+          actions: [...char.actions, { name, frames: [] }],
+        };
+      });
+      setExpandedActions((prevActions) => new Set([...prevActions, `${charIndex}-${newChars[charIndex].actions.length - 1}`]));
       return newChars;
     });
   };
