@@ -1,3 +1,6 @@
+mod atlas_packer;
+
+use atlas_packer::{pack_atlas, SpriteInput, AtlasOutput};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use image::{GenericImageView, ImageFormat};
 use std::io::Cursor;
@@ -124,12 +127,19 @@ fn save_image(base64_input: String, path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[command]
+fn create_atlas(sprites: Vec<SpriteInput>, padding: u32) -> Result<AtlasOutput, String> {
+    pack_atlas(sprites, padding)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![load_image, remove_colors, split_image, save_image])
+        .invoke_handler(tauri::generate_handler![
+            load_image, remove_colors, split_image, save_image, create_atlas
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
