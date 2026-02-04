@@ -48,22 +48,22 @@ function App() {
         </button>
       </nav>
       <main className="content">
-        {activeTab === "preprocess" && (
+        <div style={{ display: activeTab === "preprocess" ? "contents" : "none" }}>
           <Preprocessor onExportToAtlas={handleExportToAtlas} />
-        )}
-        {activeTab === "atlas" && (
+        </div>
+        <div style={{ display: activeTab === "atlas" ? "contents" : "none" }}>
           <AtlasPacker
             importedFrames={exportedFrames}
             onClearImport={() => setExportedFrames([])}
             onExportToCompress={handleExportToCompress}
           />
-        )}
-        {activeTab === "compress" && (
+        </div>
+        <div style={{ display: activeTab === "compress" ? "contents" : "none" }}>
           <Compressor
             importedImage={exportedAtlasImage || undefined}
             onClearImport={() => setExportedAtlasImage(null)}
           />
-        )}
+        </div>
       </main>
     </div>
   );

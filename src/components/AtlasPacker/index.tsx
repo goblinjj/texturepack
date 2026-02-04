@@ -290,7 +290,9 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
   };
 
   // Drag and drop handlers
-  const handleDragStart = (charIndex: number, actionIndex: number, frameIndex: number) => {
+  const handleDragStart = (e: React.DragEvent, charIndex: number, actionIndex: number, frameIndex: number) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', `${charIndex}-${actionIndex}-${frameIndex}`);
     setDragState({ charIndex, actionIndex, frameIndex });
   };
 
@@ -553,12 +555,12 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
                                       : ""
                                   }`}
                                   draggable
-                                  onDragStart={() => handleDragStart(charIdx, actionIdx, frameIdx)}
+                                  onDragStart={(e) => handleDragStart(e, charIdx, actionIdx, frameIdx)}
                                   onDragOver={(e) => handleDragOver(e, frameIdx)}
                                   onDragLeave={handleDragLeave}
                                   onDrop={(e) => handleDrop(e, charIdx, actionIdx, frameIdx)}
                                   onDragEnd={handleDragEnd}
-                                  onClick={() => selectFrame(charIdx, actionIdx, frameIdx)}
+                                  onMouseUp={() => selectFrame(charIdx, actionIdx, frameIdx)}
                                 >
                                   <img src={frame.base64} alt="" draggable={false} />
                                   <span className="frame-index">{frameIdx}</span>
@@ -696,13 +698,20 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
               <button className="close-btn" onClick={stopAnimation}>×</button>
             </div>
             <div className="anim-preview-content">
-              {(() => {
-                const action = characters[animPreview.charIndex]?.actions[animPreview.actionIndex];
-                const frame = action?.frames[animPreview.currentFrame];
-                return frame ? (
-                  <img src={frame.base64} alt="" />
-                ) : null;
-              })()}
+              <div className="anim-frame-container">
+                {(() => {
+                  const action = characters[animPreview.charIndex]?.actions[animPreview.actionIndex];
+                  const frame = action?.frames[animPreview.currentFrame];
+                  return frame ? (
+                    <img
+                      src={frame.base64}
+                      alt=""
+                      style={{ transform: `translate(${frame.offsetX}px, ${frame.offsetY}px)` }}
+                    />
+                  ) : null;
+                })()}
+                <div className="anim-crosshair" />
+              </div>
             </div>
             <div className="anim-preview-controls">
               <label>
