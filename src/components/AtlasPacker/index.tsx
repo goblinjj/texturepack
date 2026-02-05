@@ -47,6 +47,7 @@ interface AnimationPreview {
   fps: number;
   preRenderedFrames: string[]; // Pre-rendered frames with offset applied
   needsRerender: boolean; // Flag to trigger re-render when offsets change
+  canvasSize: { width: number; height: number }; // Fixed canvas size for consistent rendering
 }
 
 interface SelectedFrame {
@@ -416,13 +417,13 @@ export function AtlasPacker({ importedFrames, importedFramesByAction, onClearImp
   };
 
   // Pre-render frames with offset applied to canvas
-  const preRenderFrames = useCallback(async (frames: SpriteFrame[]): Promise<string[]> => {
-    // Find the maximum dimensions needed (considering offsets)
-    let maxWidth = 0;
-    let maxHeight = 0;
+  // Use a fixed canvas size based on image dimensions + fixed margin for offsets
+  const preRenderFrames = useCallback(async (frames: SpriteFrame[], fixedCanvasSize?: { width: number; height: number }): Promise<{ frames: string[]; canvasSize: { width: number; height: number } }> => {
     const images: HTMLImageElement[] = [];
 
-    // Load all images first
+    // Load all images first and find max image dimensions
+    let maxImgWidth = 0;
+    let maxImgHeight = 0;
     for (const frame of frames) {
       const img = new Image();
       img.src = frame.base64;
@@ -431,13 +432,15 @@ export function AtlasPacker({ importedFrames, importedFramesByAction, onClearImp
         img.onerror = () => resolve();
       });
       images.push(img);
-
-      // Calculate required canvas size (image size + max offset in either direction)
-      const frameWidth = img.width + Math.abs(frame.offsetX) * 2;
-      const frameHeight = img.height + Math.abs(frame.offsetY) * 2;
-      maxWidth = Math.max(maxWidth, frameWidth);
-      maxHeight = Math.max(maxHeight, frameHeight);
+      maxImgWidth = Math.max(maxImgWidth, img.width);
+      maxImgHeight = Math.max(maxImgHeight, img.height);
     }
+
+    // Use fixed canvas size if provided, otherwise calculate based on image size + fixed margin
+    // The margin allows for offset adjustments without changing canvas size
+    const offsetMargin = 100; // Fixed margin for offset adjustments
+    const canvasWidth = fixedCanvasSize?.width ?? (maxImgWidth + offsetMargin * 2);
+    const canvasHeight = fixedCanvasSize?.height ?? (maxImgHeight + offsetMargin * 2);
 
     // Render each frame to canvas with offset pre-applied
     const renderedFrames: string[] = [];
@@ -446,23 +449,23 @@ export function AtlasPacker({ importedFrames, importedFramesByAction, onClearImp
       const img = images[i];
 
       const canvas = document.createElement('canvas');
-      canvas.width = maxWidth;
-      canvas.height = maxHeight;
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
       const ctx = canvas.getContext('2d');
       if (!ctx) {
         renderedFrames.push(frame.base64);
         continue;
       }
 
-      // Center the image, then apply offset
-      const centerX = (maxWidth - img.width) / 2;
-      const centerY = (maxHeight - img.height) / 2;
+      // Center the image in canvas, then apply offset
+      const centerX = (canvasWidth - img.width) / 2;
+      const centerY = (canvasHeight - img.height) / 2;
       ctx.drawImage(img, centerX + frame.offsetX, centerY + frame.offsetY);
 
       renderedFrames.push(canvas.toDataURL('image/png'));
     }
 
-    return renderedFrames;
+    return { frames: renderedFrames, canvasSize: { width: canvasWidth, height: canvasHeight } };
   }, []);
 
   // Animation preview handlers
@@ -475,8 +478,8 @@ export function AtlasPacker({ importedFrames, importedFramesByAction, onClearImp
       clearInterval(animIntervalRef.current);
     }
 
-    // Pre-render all frames with offsets applied
-    const preRenderedFrames = await preRenderFrames(action.frames);
+    // Pre-render all frames with offsets applied (no fixed size on first render)
+    const result = await preRenderFrames(action.frames);
 
     setAnimPreview({
       charIndex,
@@ -484,8 +487,9 @@ export function AtlasPacker({ importedFrames, importedFramesByAction, onClearImp
       currentFrame: 0,
       isPlaying: true,
       fps: 12,
-      preRenderedFrames,
+      preRenderedFrames: result.frames,
       needsRerender: false,
+      canvasSize: result.canvasSize,
     });
   }, [characters, preRenderFrames]);
 
@@ -554,7 +558,7 @@ export function AtlasPacker({ importedFrames, importedFramesByAction, onClearImp
     setAnimPreview((prev) => prev ? { ...prev, needsRerender: true } : null);
   }, [animPreview, characters, columnSyncEnabled, updateFrameOffset]);
 
-  // Re-render frames when offsets change
+  // Re-render frames when offsets change (use fixed canvas size to prevent size jumping)
   useEffect(() => {
     if (!animPreview?.needsRerender) return;
 
@@ -562,14 +566,15 @@ export function AtlasPacker({ importedFrames, importedFramesByAction, onClearImp
     if (!action || action.frames.length === 0) return;
 
     (async () => {
-      const newPreRenderedFrames = await preRenderFrames(action.frames);
+      // Pass the fixed canvas size to maintain consistent dimensions
+      const result = await preRenderFrames(action.frames, animPreview.canvasSize);
       setAnimPreview((prev) => prev ? {
         ...prev,
-        preRenderedFrames: newPreRenderedFrames,
+        preRenderedFrames: result.frames,
         needsRerender: false,
       } : null);
     })();
-  }, [animPreview?.needsRerender, animPreview?.charIndex, animPreview?.actionIndex, characters, preRenderFrames]);
+  }, [animPreview?.needsRerender, animPreview?.charIndex, animPreview?.actionIndex, animPreview?.canvasSize, characters, preRenderFrames]);
 
   // Keyboard shortcuts for animation preview
   useEffect(() => {
