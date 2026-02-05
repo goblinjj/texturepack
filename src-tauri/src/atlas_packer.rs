@@ -111,7 +111,7 @@ pub fn pack_atlas(sprites: Vec<SpriteInput>, padding: u32) -> Result<AtlasOutput
 
     // Try different bin sizes until we find one that fits
     let mut bin_size = 256u32;
-    let max_size = 4096u32;
+    let max_size = 2048u32;
 
     let placements = loop {
         let mut target_bins = BTreeMap::new();
@@ -127,7 +127,7 @@ pub fn pack_atlas(sprites: Vec<SpriteInput>, padding: u32) -> Result<AtlasOutput
             Err(_) => {
                 bin_size *= 2;
                 if bin_size > max_size {
-                    return Err("Images too large to pack into 4096x4096".to_string());
+                    return Err("Images too large to pack into 2048x2048".to_string());
                 }
             }
         }

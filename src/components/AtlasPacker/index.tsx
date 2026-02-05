@@ -46,6 +46,7 @@ interface AnimationPreview {
   isPlaying: boolean;
   fps: number;
   preRenderedFrames: string[]; // Pre-rendered frames with offset applied
+  needsRerender: boolean; // Flag to trigger re-render when offsets change
 }
 
 interface SelectedFrame {
@@ -56,13 +57,20 @@ interface SelectedFrame {
 
 let frameIdCounter = 0;
 
+interface FrameWithAction {
+  base64: string;
+  actionName: string;
+  frameIndex: number;
+}
+
 interface AtlasPackerProps {
   importedFrames?: { base64: string }[];
+  importedFramesByAction?: FrameWithAction[];
   onClearImport?: () => void;
   onExportToCompress?: (imageBase64: string) => void;
 }
 
-export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress }: AtlasPackerProps) {
+export function AtlasPacker({ importedFrames, importedFramesByAction, onClearImport, onExportToCompress }: AtlasPackerProps) {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [atlasPreview, setAtlasPreview] = useState<string | null>(null);
   const [atlasJson, setAtlasJson] = useState<string | null>(null);
@@ -87,6 +95,9 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
 
   // Selected frame for offset editing
   const [selectedFrame, setSelectedFrame] = useState<SelectedFrame | null>(null);
+
+  // Column sync toggle for offset adjustment
+  const [columnSyncEnabled, setColumnSyncEnabled] = useState(false);
 
   useEffect(() => {
     if (inputDialog.isOpen && inputRef.current) {
@@ -127,6 +138,59 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
           onClearImport?.();
           return;
         }
+
+        // Check if we have framesByAction data (from preprocessor with row/col info)
+        if (importedFramesByAction && importedFramesByAction.length > 0) {
+          // Group frames by action name
+          const actionMap = new Map<string, { base64: string; frameIndex: number }[]>();
+          for (const frame of importedFramesByAction) {
+            if (!actionMap.has(frame.actionName)) {
+              actionMap.set(frame.actionName, []);
+            }
+            actionMap.get(frame.actionName)!.push({
+              base64: frame.base64,
+              frameIndex: frame.frameIndex,
+            });
+          }
+
+          // Sort frames within each action by frameIndex
+          const actions: Action[] = [];
+          for (const [actionName, frames] of actionMap) {
+            frames.sort((a, b) => a.frameIndex - b.frameIndex);
+            actions.push({
+              name: actionName,
+              frames: frames.map((f, i) => ({
+                id: `frame-${frameIdCounter++}`,
+                name: `${i}.png`,
+                base64: f.base64,
+                offsetX: 0,
+                offsetY: 0,
+              })),
+            });
+          }
+
+          const newChar: Character = {
+            name: charName,
+            actions,
+          };
+
+          setCharacters((prev) => {
+            const newChars = [...prev, newChar];
+            const charIdx = newChars.length - 1;
+            setExpandedChars(new Set([...expandedChars, charIdx]));
+            const newExpandedActions = new Set(expandedActions);
+            actions.forEach((_, actionIdx) => {
+              newExpandedActions.add(`${charIdx}-${actionIdx}`);
+            });
+            setExpandedActions(newExpandedActions);
+            return newChars;
+          });
+
+          onClearImport?.();
+          return;
+        }
+
+        // Legacy flow: ask for action name
         const actionName = await showInputDialog("输入动作名称", "action");
         if (!actionName) {
           onClearImport?.();
@@ -156,7 +220,7 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
         onClearImport?.();
       })();
     }
-  }, [importedFrames]);
+  }, [importedFrames, importedFramesByAction]);
 
   const addCharacter = async () => {
     const name = await showInputDialog("输入人物名称", "");
@@ -247,21 +311,33 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
     setCharacters(characters.filter((_, i) => i !== charIndex));
   };
 
-  const updateFrameOffset = (charIndex: number, actionIndex: number, frameIndex: number, offsetX: number, offsetY: number) => {
+  const updateFrameOffset = (charIndex: number, actionIndex: number, frameIndex: number, offsetX: number, offsetY: number, syncColumn = false) => {
     setCharacters((prev) => {
       return prev.map((char, cIdx) => {
         if (cIdx !== charIndex) return char;
         return {
           ...char,
           actions: char.actions.map((action, aIdx) => {
-            if (aIdx !== actionIndex) return action;
-            return {
-              ...action,
-              frames: action.frames.map((frame, fIdx) => {
-                if (fIdx !== frameIndex) return frame;
-                return { ...frame, offsetX, offsetY };
-              }),
-            };
+            if (syncColumn) {
+              // When column sync is enabled, update the same frame index across all actions
+              return {
+                ...action,
+                frames: action.frames.map((frame, fIdx) => {
+                  if (fIdx !== frameIndex) return frame;
+                  return { ...frame, offsetX, offsetY };
+                }),
+              };
+            } else {
+              // Normal update: only update the specific frame in the specific action
+              if (aIdx !== actionIndex) return action;
+              return {
+                ...action,
+                frames: action.frames.map((frame, fIdx) => {
+                  if (fIdx !== frameIndex) return frame;
+                  return { ...frame, offsetX, offsetY };
+                }),
+              };
+            }
           }),
         };
       });
@@ -409,6 +485,7 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
       isPlaying: true,
       fps: 12,
       preRenderedFrames,
+      needsRerender: false,
     });
   }, [characters, preRenderFrames]);
 
@@ -423,6 +500,50 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
   const setAnimationFps = useCallback((fps: number) => {
     setAnimPreview((prev) => prev ? { ...prev, fps } : null);
   }, []);
+
+  // Update offset from animation preview and trigger re-render
+  const updateAnimPreviewOffset = useCallback(async (deltaX: number, deltaY: number) => {
+    if (!animPreview) return;
+
+    const action = characters[animPreview.charIndex]?.actions[animPreview.actionIndex];
+    if (!action) return;
+
+    const frame = action.frames[animPreview.currentFrame];
+    if (!frame) return;
+
+    const newOffsetX = frame.offsetX + deltaX;
+    const newOffsetY = frame.offsetY + deltaY;
+
+    // Update the frame offset (with or without column sync)
+    updateFrameOffset(
+      animPreview.charIndex,
+      animPreview.actionIndex,
+      animPreview.currentFrame,
+      newOffsetX,
+      newOffsetY,
+      columnSyncEnabled
+    );
+
+    // Mark that we need to re-render
+    setAnimPreview((prev) => prev ? { ...prev, needsRerender: true } : null);
+  }, [animPreview, characters, columnSyncEnabled, updateFrameOffset]);
+
+  // Re-render frames when offsets change
+  useEffect(() => {
+    if (!animPreview?.needsRerender) return;
+
+    const action = characters[animPreview.charIndex]?.actions[animPreview.actionIndex];
+    if (!action || action.frames.length === 0) return;
+
+    (async () => {
+      const newPreRenderedFrames = await preRenderFrames(action.frames);
+      setAnimPreview((prev) => prev ? {
+        ...prev,
+        preRenderedFrames: newPreRenderedFrames,
+        needsRerender: false,
+      } : null);
+    })();
+  }, [animPreview?.needsRerender, animPreview?.charIndex, animPreview?.actionIndex, characters, preRenderFrames]);
 
   // Animation loop
   useEffect(() => {
@@ -743,7 +864,9 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
           </div>
         </div>
       )}
-      {animPreview && (
+      {animPreview && (() => {
+        const currentFrameData = characters[animPreview.charIndex]?.actions[animPreview.actionIndex]?.frames[animPreview.currentFrame];
+        return (
         <div className="dialog-overlay" onClick={stopAnimation}>
           <div className="anim-preview-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="anim-preview-header">
@@ -779,9 +902,32 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
                 帧: {animPreview.currentFrame + 1} / {characters[animPreview.charIndex]?.actions[animPreview.actionIndex]?.frames.length || 0}
               </span>
             </div>
+            <div className="anim-offset-controls">
+              <div className="offset-row">
+                <label>X:</label>
+                <button onClick={() => updateAnimPreviewOffset(-1, 0)}>-</button>
+                <span className="offset-value">{currentFrameData?.offsetX ?? 0}</span>
+                <button onClick={() => updateAnimPreviewOffset(1, 0)}>+</button>
+                <label style={{ marginLeft: '16px' }}>Y:</label>
+                <button onClick={() => updateAnimPreviewOffset(0, -1)}>-</button>
+                <span className="offset-value">{currentFrameData?.offsetY ?? 0}</span>
+                <button onClick={() => updateAnimPreviewOffset(0, 1)}>+</button>
+              </div>
+              <div className="sync-toggle">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={columnSyncEnabled}
+                    onChange={(e) => setColumnSyncEnabled(e.target.checked)}
+                  />
+                  列同步（同步调整所有动作的相同帧）
+                </label>
+              </div>
+            </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

@@ -10,13 +10,21 @@ export interface ExportedFrame {
   base64: string;
 }
 
+export interface FrameWithAction {
+  base64: string;
+  actionName: string;
+  frameIndex: number;
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("preprocess");
   const [exportedFrames, setExportedFrames] = useState<ExportedFrame[]>([]);
+  const [exportedFramesByAction, setExportedFramesByAction] = useState<FrameWithAction[] | undefined>(undefined);
   const [exportedAtlasImage, setExportedAtlasImage] = useState<string | null>(null);
 
-  const handleExportToAtlas = (frames: ExportedFrame[]) => {
+  const handleExportToAtlas = (frames: ExportedFrame[], framesByAction?: FrameWithAction[]) => {
     setExportedFrames(frames);
+    setExportedFramesByAction(framesByAction);
     setActiveTab("atlas");
   };
 
@@ -54,7 +62,8 @@ function App() {
         <div style={{ display: activeTab === "atlas" ? "contents" : "none" }}>
           <AtlasPacker
             importedFrames={exportedFrames}
-            onClearImport={() => setExportedFrames([])}
+            importedFramesByAction={exportedFramesByAction}
+            onClearImport={() => { setExportedFrames([]); setExportedFramesByAction(undefined); }}
             onExportToCompress={handleExportToCompress}
           />
         </div>

@@ -609,3 +609,71 @@
   background: #1a5a9a;
   color: white;
 }
+
+/* Animation Preview Offset Controls */
+.anim-offset-controls {
+  padding: 12px 16px;
+  background: #0f3460;
+  border-top: 1px solid #1a4a7a;
+}
+
+.anim-offset-controls .offset-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.anim-offset-controls label {
+  font-size: 12px;
+  color: #888;
+  min-width: 16px;
+}
+
+.anim-offset-controls button {
+  width: 28px;
+  height: 28px;
+  background: #16213e;
+  border: 1px solid #1a4a7a;
+  border-radius: 4px;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.anim-offset-controls button:hover {
+  background: #1a5a9a;
+  color: white;
+  border-color: #1a5a9a;
+}
+
+.anim-offset-controls .offset-value {
+  min-width: 36px;
+  text-align: center;
+  font-size: 13px;
+  color: #e94560;
+  font-family: monospace;
+}
+
+.anim-offset-controls .sync-toggle {
+  display: flex;
+  align-items: center;
+}
+
+.anim-offset-controls .sync-toggle label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #888;
+  min-width: auto;
+}
+
+.anim-offset-controls .sync-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #e94560;
+}

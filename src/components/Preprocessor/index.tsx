@@ -16,8 +16,14 @@ interface ColorEntry {
   tolerance: number;
 }
 
+interface FrameWithAction {
+  base64: string;
+  actionName: string;
+  frameIndex: number;
+}
+
 interface PreprocessorProps {
-  onExportToAtlas?: (frames: { base64: string }[]) => void;
+  onExportToAtlas?: (frames: { base64: string }[], framesByAction?: FrameWithAction[]) => void;
 }
 
 export function Preprocessor({ onExportToAtlas }: PreprocessorProps) {
@@ -331,7 +337,33 @@ export function Preprocessor({ onExportToAtlas }: PreprocessorProps) {
               base64Input: processedImage,
               config,
             });
-            onExportToAtlas(splitImages.map(base64 => ({ base64 })));
+
+            // Calculate rows and cols from split lines
+            const numRows = hLines.length - 1;
+            const numCols = vLines.length - 1;
+
+            // Predefined action names
+            const actionNames = ['idle', 'run', 'atk', 'hurt', 'magic', 'die'];
+
+            // Create frames with action info (row = action, col = frame index)
+            const framesByAction: FrameWithAction[] = [];
+            for (let row = 0; row < numRows; row++) {
+              const actionName = row < actionNames.length
+                ? actionNames[row]
+                : `action_${row + 1}`;
+              for (let col = 0; col < numCols; col++) {
+                const imageIndex = row * numCols + col;
+                if (imageIndex < splitImages.length) {
+                  framesByAction.push({
+                    base64: splitImages[imageIndex],
+                    actionName,
+                    frameIndex: col,
+                  });
+                }
+              }
+            }
+
+            onExportToAtlas(splitImages.map(base64 => ({ base64 })), framesByAction);
           }}>
             导出到 Atlas
           </button>
