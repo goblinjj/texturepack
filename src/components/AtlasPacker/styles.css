@@ -149,6 +149,15 @@
 
 .preview-header label { display: flex; align-items: center; gap: 8px; color: #888; }
 
+.preview-header .scale-warning {
+  background: #f59e0b;
+  color: #000;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .preview-header input[type="number"] {
   width: 50px;
   padding: 4px 8px;

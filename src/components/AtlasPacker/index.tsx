@@ -645,6 +645,7 @@ export function AtlasPacker({ importedFrames, importedFramesByAction, onClearImp
   }, [animPreview?.isPlaying, animPreview?.fps, animPreview?.charIndex, animPreview?.actionIndex, characters, stopAnimation]);
 
   const [isGenerating, setIsGenerating] = useState(false);
+  const [atlasScale, setAtlasScale] = useState<number>(1);
 
   const generateAtlas = async () => {
     const sprites: { name: string; base64: string; offsetX: number; offsetY: number }[] = [];
@@ -672,6 +673,18 @@ export function AtlasPacker({ importedFrames, importedFramesByAction, onClearImp
       const result = await invoke<AtlasOutput>("create_atlas", { sprites, padding });
       setAtlasPreview(result.image_base64);
       setAtlasJson(result.json);
+
+      // Parse JSON to get scale info
+      try {
+        const parsed = JSON.parse(result.json);
+        const scale = parsed.meta?.scale ?? 1;
+        setAtlasScale(scale);
+        if (scale < 1) {
+          alert(`图片已自动缩放至 ${Math.round(scale * 100)}% 以适应 2048x2048 限制`);
+        }
+      } catch {
+        setAtlasScale(1);
+      }
     } catch (error) {
       console.error("生成 Atlas 失败:", error);
       alert(`生成 Atlas 失败: ${error}`);
@@ -854,6 +867,11 @@ export function AtlasPacker({ importedFrames, importedFramesByAction, onClearImp
         <div className="preview-panel">
           <div className="preview-header">
             <span>Atlas 预览</span>
+            {atlasScale < 1 && (
+              <span className="scale-warning">
+                已缩放至 {Math.round(atlasScale * 100)}%
+              </span>
+            )}
             <label>
               Padding:
               <input
