@@ -644,6 +644,8 @@ export function AtlasPacker({ importedFrames, importedFramesByAction, onClearImp
     };
   }, [animPreview?.isPlaying, animPreview?.fps, animPreview?.charIndex, animPreview?.actionIndex, characters, stopAnimation]);
 
+  const [isGenerating, setIsGenerating] = useState(false);
+
   const generateAtlas = async () => {
     const sprites: { name: string; base64: string; offsetX: number; offsetY: number }[] = [];
 
@@ -665,9 +667,17 @@ export function AtlasPacker({ importedFrames, importedFramesByAction, onClearImp
       return;
     }
 
-    const result = await invoke<AtlasOutput>("create_atlas", { sprites, padding });
-    setAtlasPreview(result.image_base64);
-    setAtlasJson(result.json);
+    setIsGenerating(true);
+    try {
+      const result = await invoke<AtlasOutput>("create_atlas", { sprites, padding });
+      setAtlasPreview(result.image_base64);
+      setAtlasJson(result.json);
+    } catch (error) {
+      console.error("生成 Atlas 失败:", error);
+      alert(`生成 Atlas 失败: ${error}`);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const exportAtlas = async () => {
@@ -693,8 +703,8 @@ export function AtlasPacker({ importedFrames, importedFramesByAction, onClearImp
     <div className="atlas-packer">
       <div className="toolbar">
         <button onClick={addCharacter}>+ 新建人物</button>
-        <button onClick={generateAtlas} disabled={characters.length === 0}>
-          生成 Atlas
+        <button onClick={generateAtlas} disabled={characters.length === 0 || isGenerating}>
+          {isGenerating ? "生成中..." : "生成 Atlas"}
         </button>
         <button onClick={exportAtlas} disabled={!atlasPreview}>
           导出 Atlas + JSON
