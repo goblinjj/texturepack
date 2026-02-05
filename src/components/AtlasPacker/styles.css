@@ -677,3 +677,57 @@
   cursor: pointer;
   accent-color: #e94560;
 }
+
+.anim-offset-controls .shortcut-hint {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #1a4a7a;
+  font-size: 11px;
+  color: #666;
+  text-align: center;
+}
+
+/* Playback controls */
+.anim-preview-controls .playback-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.anim-preview-controls .play-pause-btn {
+  width: 36px;
+  height: 36px;
+  background: #e94560;
+  border: none;
+  border-radius: 50%;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.anim-preview-controls .play-pause-btn:hover {
+  background: #ff6b6b;
+}
+
+.anim-preview-controls .frame-btn {
+  width: 28px;
+  height: 28px;
+  background: #0f3460;
+  border: 1px solid #1a4a7a;
+  border-radius: 4px;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.anim-preview-controls .frame-btn:hover {
+  background: #1a5a9a;
+  color: white;
+  border-color: #1a5a9a;
+}

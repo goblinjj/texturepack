@@ -497,6 +497,32 @@ export function AtlasPacker({ importedFrames, importedFramesByAction, onClearImp
     setAnimPreview(null);
   }, []);
 
+  const togglePlayPause = useCallback(() => {
+    setAnimPreview((prev) => prev ? { ...prev, isPlaying: !prev.isPlaying } : null);
+  }, []);
+
+  const goToPrevFrame = useCallback(() => {
+    if (!animPreview) return;
+    const action = characters[animPreview.charIndex]?.actions[animPreview.actionIndex];
+    if (!action || action.frames.length === 0) return;
+    setAnimPreview((prev) => {
+      if (!prev) return null;
+      const prevFrame = (prev.currentFrame - 1 + action.frames.length) % action.frames.length;
+      return { ...prev, currentFrame: prevFrame };
+    });
+  }, [animPreview, characters]);
+
+  const goToNextFrame = useCallback(() => {
+    if (!animPreview) return;
+    const action = characters[animPreview.charIndex]?.actions[animPreview.actionIndex];
+    if (!action || action.frames.length === 0) return;
+    setAnimPreview((prev) => {
+      if (!prev) return null;
+      const nextFrame = (prev.currentFrame + 1) % action.frames.length;
+      return { ...prev, currentFrame: nextFrame };
+    });
+  }, [animPreview, characters]);
+
   const setAnimationFps = useCallback((fps: number) => {
     setAnimPreview((prev) => prev ? { ...prev, fps } : null);
   }, []);
@@ -544,6 +570,54 @@ export function AtlasPacker({ importedFrames, importedFramesByAction, onClearImp
       } : null);
     })();
   }, [animPreview?.needsRerender, animPreview?.charIndex, animPreview?.actionIndex, characters, preRenderFrames]);
+
+  // Keyboard shortcuts for animation preview
+  useEffect(() => {
+    if (!animPreview) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input field
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      switch (e.key) {
+        case 'ArrowLeft':
+          e.preventDefault();
+          updateAnimPreviewOffset(-1, 0);
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          updateAnimPreviewOffset(1, 0);
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          updateAnimPreviewOffset(0, -1);
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          updateAnimPreviewOffset(0, 1);
+          break;
+        case ' ':
+          e.preventDefault();
+          togglePlayPause();
+          break;
+        case ',':
+          e.preventDefault();
+          goToPrevFrame();
+          break;
+        case '.':
+          e.preventDefault();
+          goToNextFrame();
+          break;
+        case 'Escape':
+          e.preventDefault();
+          stopAnimation();
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [animPreview, updateAnimPreviewOffset, togglePlayPause, goToPrevFrame, goToNextFrame, stopAnimation]);
 
   // Animation loop
   useEffect(() => {
@@ -887,6 +961,13 @@ export function AtlasPacker({ importedFrames, importedFramesByAction, onClearImp
               </div>
             </div>
             <div className="anim-preview-controls">
+              <div className="playback-controls">
+                <button className="frame-btn" onClick={goToPrevFrame} title="上一帧 (,)">⏮</button>
+                <button className="play-pause-btn" onClick={togglePlayPause} title="播放/暂停 (空格)">
+                  {animPreview.isPlaying ? '⏸' : '▶'}
+                </button>
+                <button className="frame-btn" onClick={goToNextFrame} title="下一帧 (.)">⏭</button>
+              </div>
               <label>
                 FPS:
                 <input
@@ -905,13 +986,13 @@ export function AtlasPacker({ importedFrames, importedFramesByAction, onClearImp
             <div className="anim-offset-controls">
               <div className="offset-row">
                 <label>X:</label>
-                <button onClick={() => updateAnimPreviewOffset(-1, 0)}>-</button>
+                <button onClick={() => updateAnimPreviewOffset(-1, 0)} title="← 快捷键">-</button>
                 <span className="offset-value">{currentFrameData?.offsetX ?? 0}</span>
-                <button onClick={() => updateAnimPreviewOffset(1, 0)}>+</button>
+                <button onClick={() => updateAnimPreviewOffset(1, 0)} title="→ 快捷键">+</button>
                 <label style={{ marginLeft: '16px' }}>Y:</label>
-                <button onClick={() => updateAnimPreviewOffset(0, -1)}>-</button>
+                <button onClick={() => updateAnimPreviewOffset(0, -1)} title="↑ 快捷键">-</button>
                 <span className="offset-value">{currentFrameData?.offsetY ?? 0}</span>
-                <button onClick={() => updateAnimPreviewOffset(0, 1)}>+</button>
+                <button onClick={() => updateAnimPreviewOffset(0, 1)} title="↓ 快捷键">+</button>
               </div>
               <div className="sync-toggle">
                 <label>
@@ -922,6 +1003,9 @@ export function AtlasPacker({ importedFrames, importedFramesByAction, onClearImp
                   />
                   列同步（同步调整所有动作的相同帧）
                 </label>
+              </div>
+              <div className="shortcut-hint">
+                快捷键: ←→↑↓ 调整偏移 | 空格 播放/暂停 | , . 切换帧 | Esc 关闭
               </div>
             </div>
           </div>
