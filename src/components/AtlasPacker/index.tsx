@@ -45,6 +45,7 @@ interface AnimationPreview {
   currentFrame: number;
   isPlaying: boolean;
   fps: number;
+  preRenderedFrames: string[]; // Pre-rendered frames with offset applied
 }
 
 interface SelectedFrame {
@@ -338,8 +339,58 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
     setDragOverIndex(null);
   };
 
+  // Pre-render frames with offset applied to canvas
+  const preRenderFrames = useCallback(async (frames: SpriteFrame[]): Promise<string[]> => {
+    // Find the maximum dimensions needed (considering offsets)
+    let maxWidth = 0;
+    let maxHeight = 0;
+    const images: HTMLImageElement[] = [];
+
+    // Load all images first
+    for (const frame of frames) {
+      const img = new Image();
+      img.src = frame.base64;
+      await new Promise<void>((resolve) => {
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
+      });
+      images.push(img);
+
+      // Calculate required canvas size (image size + max offset in either direction)
+      const frameWidth = img.width + Math.abs(frame.offsetX) * 2;
+      const frameHeight = img.height + Math.abs(frame.offsetY) * 2;
+      maxWidth = Math.max(maxWidth, frameWidth);
+      maxHeight = Math.max(maxHeight, frameHeight);
+    }
+
+    // Render each frame to canvas with offset pre-applied
+    const renderedFrames: string[] = [];
+    for (let i = 0; i < frames.length; i++) {
+      const frame = frames[i];
+      const img = images[i];
+
+      const canvas = document.createElement('canvas');
+      canvas.width = maxWidth;
+      canvas.height = maxHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        renderedFrames.push(frame.base64);
+        continue;
+      }
+
+      // Center the image, then apply offset
+      const centerX = (maxWidth - img.width) / 2;
+      const centerY = (maxHeight - img.height) / 2;
+      ctx.drawImage(img, centerX + frame.offsetX, centerY + frame.offsetY);
+
+      renderedFrames.push(canvas.toDataURL('image/png'));
+    }
+
+    return renderedFrames;
+  }, []);
+
   // Animation preview handlers
-  const startAnimation = useCallback((charIndex: number, actionIndex: number) => {
+  const startAnimation = useCallback(async (charIndex: number, actionIndex: number) => {
     const action = characters[charIndex]?.actions[actionIndex];
     if (!action || action.frames.length === 0) return;
 
@@ -348,14 +399,18 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
       clearInterval(animIntervalRef.current);
     }
 
+    // Pre-render all frames with offsets applied
+    const preRenderedFrames = await preRenderFrames(action.frames);
+
     setAnimPreview({
       charIndex,
       actionIndex,
       currentFrame: 0,
       isPlaying: true,
       fps: 12,
+      preRenderedFrames,
     });
-  }, [characters]);
+  }, [characters, preRenderFrames]);
 
   const stopAnimation = useCallback(() => {
     if (animIntervalRef.current) {
@@ -699,17 +754,12 @@ export function AtlasPacker({ importedFrames, onClearImport, onExportToCompress 
             </div>
             <div className="anim-preview-content">
               <div className="anim-frame-container">
-                {(() => {
-                  const action = characters[animPreview.charIndex]?.actions[animPreview.actionIndex];
-                  const frame = action?.frames[animPreview.currentFrame];
-                  return frame ? (
-                    <img
-                      src={frame.base64}
-                      alt=""
-                      style={{ transform: `translate(${frame.offsetX}px, ${frame.offsetY}px)` }}
-                    />
-                  ) : null;
-                })()}
+                {animPreview.preRenderedFrames[animPreview.currentFrame] && (
+                  <img
+                    src={animPreview.preRenderedFrames[animPreview.currentFrame]}
+                    alt=""
+                  />
+                )}
                 <div className="anim-crosshair" />
               </div>
             </div>

@@ -354,7 +354,7 @@
   max-height: 200px;
   object-fit: contain;
   image-rendering: pixelated;
-  transition: transform 0.05s;
+  /* No transition - offset is pre-baked into canvas for smooth animation */
 }
 
 .anim-crosshair {
